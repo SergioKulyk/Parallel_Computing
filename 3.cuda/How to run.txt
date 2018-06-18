@@ -1,0 +1,2 @@
+nvcc name.cu
+a.exe    

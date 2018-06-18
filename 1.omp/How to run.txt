@@ -1,0 +1,2 @@
+gcc name.c -fopenmp -o name
+name.exe
