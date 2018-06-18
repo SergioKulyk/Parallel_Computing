@@ -1,141 +1,119 @@
-
-#include <stdio.h>
+#include<stdio.h>
 #include <stdlib.h>
+#include <time.h>
+#include <mpi.h>
 
-double **dMatrix(int m, int n) {
-    double **a;
-    a = (double **) malloc(m * sizeof(double *));
-    a[0] = (double *) malloc(m * n * sizeof(double));
-
-    for (int i = 1; i < m; i++) {
-        a[i] = a[i - 1] + n;
-    }
-    return a;
-}
-
-// Equation system output.
-void out(double** A, double* y, int n)
+int main(int argc, char **argv)
 {
-    for (int i = 0; i < n; i++)
+    MPI_Init(&argc, &argv);
+
+    int i,j,k;
+    int map[500];
+    float A[500][500],b[500],c[500],x[500],sum=0.0;
+    double range=1.0;
+    int n=3;
+    int rank, nprocs;
+    clock_t begin1, end1, begin2, end2;
+    MPI_Status status;
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);   /* get current process id */
+    MPI_Comm_size(MPI_COMM_WORLD, &nprocs); /* get number of processes */
+
+//////////////////////////////////////////////////////////////////////////////////
+
+    if (rank==0)
     {
-        for (int j = 0; j < n; j++)
+        for (i=0; i<n; i++)
         {
-            printf("%lf * x%d", A[i][j], j);
-            if (j < n - 1)
-                printf(" + ");
+            for (j=0; j<n; j++)
+                A[i][j]=range*(1.0-2.0*(double)rand()/RAND_MAX);
+            b[i]=range*(1.0-2.0*(double)rand()/RAND_MAX);
         }
-        printf(" = %f\n", y[i]);
-    }
-}
-
-double* gauss(double** A, double *Y, int n)
-{
-    double* x, max;
-    int k, index;
-
-    // Точність
-    const double eps = 0.00001;
-    x = (double *) malloc(n * sizeof(double));
-    k = 0;
-
-    while (k < n)
-    {
-        // Пошук рядка з максимальним A[i][k]
-        max = abs((int) A[k][k]);
-        index = k;
-        for (int i = k + 1; i < n; i++)
+        printf("\n Matrix A (generated randomly):\n");
+        for (i=0; i<n; i++)
         {
-            if (abs((int) A[i][k]) > max)
+            for (j=0; j<n; j++)
+                printf("%9.6lf ",A[i][j]);
+            printf("\n");
+        }
+        printf("\n Vector b (generated randomly):\n");
+        for (i=0; i<n; i++)
+            printf("%9.6lf ",b[i]);
+        printf("\n\n");
+    }
+
+//////////////////////////////////////////////////////////////////////////////////
+
+    begin1 =clock();
+
+    MPI_Bcast (A,n*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+    MPI_Bcast (b,n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+
+    for(i=0; i<n; i++)
+    {
+        map[i]= i % nprocs;
+    }
+
+    for(k=0;k<n;k++)
+    {
+        MPI_Bcast (&A[k][k],n-k,MPI_DOUBLE,map[k],MPI_COMM_WORLD);
+        MPI_Bcast (&b[k],1,MPI_DOUBLE,map[k],MPI_COMM_WORLD);
+        for(i= k+1; i<n; i++)
+        {
+            if(map[i] == rank)
             {
-                max = abs((int) A[i][k]);
-                index = i;
+                c[i]=A[i][k]/A[k][k];
             }
         }
-
-        // Перестановка рядків
-        if (max < eps) {
-            // Немає нульвих діагональних елементів.
-            printf("Решение получить невозможно из-за нулевого столбца ");
-            printf("%d матрицы A\n", index);
-            return 0;
-        }
-        for (int j = 0; j < n; j++)
+        for(i= k+1; i<n; i++)
         {
-            double temp = A[k][j];
-            A[k][j] = A[index][j];
-            A[index][j] = temp;
+            if(map[i] == rank)
+            {
+                for(j=0;j<n;j++)
+                {
+                    A[i][j]=A[i][j]-( c[i]*A[k][j] );
+                }
+                b[i]=b[i]-( c[i]*b[k] );
+            }
         }
-        double temp = Y[k];
-        Y[k] = Y[index];
-        Y[index] = temp;
-        // Нормалізація рівняння
-        for (int i = k; i < n; i++)
+    }
+    end1 = clock();
+
+//////////////////////////////////////////////////////////////////////////////////
+
+    begin2 =clock();
+
+    if (rank==0)
+    {
+        x[n-1]=b[n-1]/A[n-1][n-1];
+        for(i=n-2;i>=0;i--)
         {
-            double temp = A[i][k];
+            sum=0;
 
-            if (abs(temp) < eps) {
-                // Для нульового коефіцієнта пропустити.
-                continue;
+            for(j=i+1;j<n;j++)
+            {
+                sum=sum+A[i][j]*x[j];
             }
-
-            for (int j = 0; j < n; j++) {
-                A[i][j] = A[i][j] / temp;
-            }
-
-            Y[i] = Y[i] / temp;
-
-            if (i == k)  continue;
-
-            for (int j = 0; j < n; j++) {
-                A[i][j] = A[i][j] - A[k][j];
-            }
-
-            Y[i] = Y[i] - Y[k];
+            x[i]=(b[i]-sum)/A[i][i];
         }
 
-        k++;
+        end2 = clock();
     }
+//////////////////////////////////////////////////////////////////////////////////
+    if (rank==0)
+    {
+        printf("\nThe solution is:");
+        for(i=0;i<n;i++)
+        {
+            printf("\nx%d=%f\t",i,x[i]);
 
-    // Обробка підстановки
-    for (k = n - 1; k >= 0; k--) {
-        x[k] = Y[k];
-
-        for (int i = 0; i < k; i++) {
-            Y[i] = Y[i] - A[i][k] * x[k];
         }
+
+        printf("\n\nLU decomposition time: %f", (double)(end1 - begin1) / CLOCKS_PER_SEC);
+        printf("\nBack substitution time: %f\n", (double)(end2 - begin2) / CLOCKS_PER_SEC);
     }
 
-    return x;
-}
+    return(0);
 
-int main(void) {
-
-    double **A, *Y, *X;
-    int n;
-
-    printf("Ведіть кількість рівнянь: ");
-    scanf("%d", &n);
-
-    A = dMatrix(n, n);
-    Y = (double *) malloc(n * sizeof(double));
-    X = (double *) malloc(n * sizeof(double));
-
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            printf("a[%d][%d]= ", i, j);
-            scanf("%lf", &A[i][j]);
-        }
-    }
-
-    for (int i = 0; i < n; i++) {
-        printf("y[%d]=", i);
-        scanf("%lf", &Y[i]);
-    }
-
-    out(A, Y, n);
-
-    X = gauss(A, Y, n);
-    for (int i = 0; i < n; i++)
-        printf("x[%d]= %lf\n", i, X[i]);
-    return 0;
+    MPI_Finalize();
 }

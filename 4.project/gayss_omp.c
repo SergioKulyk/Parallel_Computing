@@ -38,6 +38,8 @@ double *gauss(double **A, double *Y, int n) {
         // Пошук рядка з максимальним A[i][k]
         max = abs((int) A[k][k]);
         index = k;
+
+        #pragma omp parallel for private (i) shared(A, Y, n)
         for (int i = k + 1; i < n; i++) {
             if (abs((int) A[i][k]) > max) {
                 max = abs((int) A[i][k]);
