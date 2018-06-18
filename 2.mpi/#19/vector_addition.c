@@ -11,15 +11,15 @@ int main(int argc, char *argv[]) {
    int    numtasks, taskid;
    int    source, destination, tag=24, rc;
    MPI_Status status;
-   long   myoffset, chunksize; 
+   long   myoffset, chunksize;
    long   i;
 
    // Initialize the array
-   for (i=0; i < ARRAYSIZE; i++) {  
+   for (i=0; i < ARRAYSIZE; i++) {
        a[i] = i;
        b[i] = 1.0;
    }
-       
+
    MPI_Init(&argc, &argv);
    MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
    if (ARRAYSIZE % numtasks != 0) {
@@ -43,8 +43,8 @@ int main(int argc, char *argv[]) {
          MPI_Recv(&c[source*chunksize], chunksize, MPI_DOUBLE, source, tag, MPI_COMM_WORLD, &status);
       for (i=0; i < ARRAYSIZE; i++)
          printf("c[%d] = %lf\n", i, c[i]);
-   }   
+   }
 
-   MPI_Finalize();   
+   MPI_Finalize();
    return 0;
 }

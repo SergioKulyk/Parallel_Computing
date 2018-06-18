@@ -14,12 +14,9 @@ double **dMatrix(int m, int n) {
 }
 
 // Equation system output.
-void out(double** A, double* y, int n)
-{
-    for (int i = 0; i < n; i++)
-    {
-        for (int j = 0; j < n; j++)
-        {
+void out(double **A, double *y, int n) {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
             printf("%lf * x%d", A[i][j], j);
             if (j < n - 1)
                 printf(" + ");
@@ -28,9 +25,8 @@ void out(double** A, double* y, int n)
     }
 }
 
-double* gauss(double** A, double *Y, int n)
-{
-    double* x, max;
+double *gauss(double **A, double *Y, int n) {
+    double *x, max;
     int k, index;
 
     // Точність
@@ -38,15 +34,12 @@ double* gauss(double** A, double *Y, int n)
     x = (double *) malloc(n * sizeof(double));
     k = 0;
 
-    while (k < n)
-    {
+    while (k < n) {
         // Пошук рядка з максимальним A[i][k]
         max = abs((int) A[k][k]);
         index = k;
-        for (int i = k + 1; i < n; i++)
-        {
-            if (abs((int) A[i][k]) > max)
-            {
+        for (int i = k + 1; i < n; i++) {
+            if (abs((int) A[i][k]) > max) {
                 max = abs((int) A[i][k]);
                 index = i;
             }
@@ -59,49 +52,64 @@ double* gauss(double** A, double *Y, int n)
             printf("%d матрицы A\n", index);
             return 0;
         }
-        for (int j = 0; j < n; j++)
+
+        #pragma omp parallel
         {
-            double temp = A[k][j];
-            A[k][j] = A[index][j];
-            A[index][j] = temp;
+            #pragma omp parallel for private (j) shared(A)
+            for (int j = 0; j < n; j++) {
+                double temp = A[k][j];
+                A[k][j] = A[index][j];
+                A[index][j] = temp;
+            }
         }
+
         double temp = Y[k];
         Y[k] = Y[index];
         Y[index] = temp;
+
         // Нормалізація рівняння
-        for (int i = k; i < n; i++)
+        #pragma omp parallel
         {
-            double temp = A[i][k];
+            #pragma omp parallel for private (i) shared(A, Y, n)
+            for (int i = k; i < n; i++) {
+                double temp = A[i][k];
 
-            if (abs(temp) < eps) {
-                // Для нульового коефіцієнта пропустити.
-                continue;
+                if (abs(temp) < eps) {
+                    // Для нульового коефіцієнта пропустити.
+                    continue;
+                }
+
+                #pragma omp parallel for private (j) shared(A, Y, n)
+                for (int j = 0; j < n; j++) {
+                    A[i][j] = A[i][j] / temp;
+                }
+
+                Y[i] = Y[i] / temp;
+
+                if (i == k) continue;
+
+                #pragma omp parallel for private (i) shared(A, Y, n)
+                for (int j = 0; j < n; j++) {
+                    A[i][j] = A[i][j] - A[k][j];
+                }
+
+                Y[i] = Y[i] - Y[k];
             }
-
-            for (int j = 0; j < n; j++) {
-                A[i][j] = A[i][j] / temp;
-            }
-
-            Y[i] = Y[i] / temp;
-
-            if (i == k)  continue;
-
-            for (int j = 0; j < n; j++) {
-                A[i][j] = A[i][j] - A[k][j];
-            }
-
-            Y[i] = Y[i] - Y[k];
         }
 
         k++;
     }
 
     // Обробка підстановки
-    for (k = n - 1; k >= 0; k--) {
-        x[k] = Y[k];
-
-        for (int i = 0; i < k; i++) {
-            Y[i] = Y[i] - A[i][k] * x[k];
+    #pragma omp parallel
+    {
+        #pragma omp parallel for private (k) shared(A, Y, x)
+        for (k = n - 1; k >= 0; k--) {
+            x[k] = Y[k];
+            #pragma omp parallel for private (k) shared(A, Y, x)
+            for (int i = 0; i < k; i++) {
+                Y[i] = Y[i] - A[i][k] * x[k];
+            }
         }
     }
 
@@ -118,7 +126,6 @@ int main(void) {
 
     A = dMatrix(n, n);
     Y = (double *) malloc(n * sizeof(double));
-    X = (double *) malloc(n * sizeof(double));
 
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
